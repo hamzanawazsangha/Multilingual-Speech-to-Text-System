@@ -1,0 +1,7 @@
+streamlit
+torch
+transformers
+torchaudio
+soundfile
+librosa
+pydub
