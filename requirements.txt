@@ -5,3 +5,4 @@ torchaudio
 soundfile
 librosa
 pydub
+ffmpeg
