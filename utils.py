@@ -1,18 +1,25 @@
-from transformers import Wav2Vec2ForCTC, Wav2Vec2Processor
+from transformers import WhisperProcessor, WhisperForConditionalGeneration
 import torch
-import librosa
+import torchaudio
+import os
 
-# Load model and processor once (GPU if available)
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+# Hugging Face token
+hf_token = os.getenv("HF_TOKEN", None)
 
-processor = Wav2Vec2Processor.from_pretrained("facebook/wav2vec2-large-960h-lv60-self")
-model = Wav2Vec2ForCTC.from_pretrained("facebook/wav2vec2-large-960h-lv60-self").to(device)
+# Load Whisper model (multilingual)
+processor = WhisperProcessor.from_pretrained("openai/whisper-large", use_auth_token=hf_token)
+model = WhisperForConditionalGeneration.from_pretrained("openai/whisper-large", use_auth_token=hf_token)
+
+# Force decoding to English (can be customized)
+forced_lang_token = processor.tokenizer.lang_to_id.get("en", None)
 
 def transcribe(audio_path):
-    speech, rate = librosa.load(audio_path, sr=16000)
-    input_values = processor(speech, return_tensors="pt", sampling_rate=16000).input_values.to(device)
-    with torch.no_grad():
-        logits = model(input_values).logits
-    predicted_ids = torch.argmax(logits, dim=-1)
-    transcription = processor.batch_decode(predicted_ids)[0]
+    speech_array, sampling_rate = torchaudio.load(audio_path)
+    if sampling_rate != 16000:
+        resampler = torchaudio.transforms.Resample(sampling_rate, 16000)
+        speech_array = resampler(speech_array)
+
+    input_features = processor(speech_array.squeeze().numpy(), sampling_rate=16000, return_tensors="pt").input_features
+    generated_ids = model.generate(input_features, forced_bos_token_id=forced_lang_token)
+    transcription = processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
     return transcription
