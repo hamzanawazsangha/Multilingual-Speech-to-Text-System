@@ -1,8 +1,7 @@
+
 streamlit
-torch
-transformers
-torchaudio
-soundfile
-librosa
 pydub
-ffmpeg
+torch
+torchaudio
+transformers
+ffmpeg-python
