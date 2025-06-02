@@ -1,40 +1,33 @@
 import torch
-import torchaudio
 from transformers import pipeline
 import os
-from typing import Optional
 
-# Initialize the pipeline (simpler interface)
+# Initialize the pipeline with proper settings
 def get_model():
     return pipeline(
         "automatic-speech-recognition",
-        model="openai/whisper-medium",  # Using medium instead of large for better performance
-        device="cuda" if torch.cuda.is_available() else "cpu"
+        model="openai/whisper-medium",
+        device="cuda" if torch.cuda.is_available() else "cpu",
+        torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32
     )
 
-# Global model loading (cached)
+# Global model loading with cache
 pipe = get_model()
 
-def transcribe(audio_path: str) -> Optional[str]:
-    """
-    Transcribe audio file to text using Whisper model
-    
-    Args:
-        audio_path: Path to audio file (WAV format recommended)
-        
-    Returns:
-        Transcribed text or None if error occurs
-    """
+def transcribe(audio_path: str, language: str = None) -> str:
+    """Transcribe audio with optional language specification"""
     try:
-        # Use the pipeline which handles all preprocessing automatically
+        generate_kwargs = {}
+        if language:
+            generate_kwargs["language"] = language
+            
         result = pipe(
             audio_path,
-            chunk_length_s=30,  # For longer audio files
+            chunk_length_s=30,
             stride_length_s=5,
-            batch_size=8
+            batch_size=4,
+            generate_kwargs=generate_kwargs
         )
         return result["text"]
-        
     except Exception as e:
-        print(f"Transcription error: {str(e)}")
-        raise
+        raise RuntimeError(f"Transcription failed: {str(e)}")
