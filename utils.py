@@ -1,27 +1,40 @@
 import torch
 import torchaudio
-from transformers import WhisperProcessor, WhisperForConditionalGeneration
+from transformers import pipeline
 import os
+from typing import Optional
 
-# Load Hugging Face token from environment variable
-hf_token = os.getenv("HF_TOKEN")
+# Initialize the pipeline (simpler interface)
+def get_model():
+    return pipeline(
+        "automatic-speech-recognition",
+        model="openai/whisper-medium",  # Using medium instead of large for better performance
+        device="cuda" if torch.cuda.is_available() else "cpu"
+    )
 
-# Load processor and model with authentication token
-processor = WhisperProcessor.from_pretrained("openai/whisper-large-v2", token=hf_token)
-model = WhisperForConditionalGeneration.from_pretrained("openai/whisper-large-v2", token=hf_token)
-model.eval()
+# Global model loading (cached)
+pipe = get_model()
 
-def transcribe(audio_path):
-    # Load audio
-    speech_array, sampling_rate = torchaudio.load(audio_path)
-    # Resample if necessary
-    if sampling_rate != 16000:
-        resampler = torchaudio.transforms.Resample(orig_freq=sampling_rate, new_freq=16000)
-        speech_array = resampler(speech_array)
-    # Preprocess audio
-    input_features = processor(speech_array.squeeze(), sampling_rate=16000, return_tensors="pt").input_features
-    # Generate transcription
-    predicted_ids = model.generate(input_features)
-    # Decode transcription
-    transcription = processor.batch_decode(predicted_ids, skip_special_tokens=True)[0]
-    return transcription
+def transcribe(audio_path: str) -> Optional[str]:
+    """
+    Transcribe audio file to text using Whisper model
+    
+    Args:
+        audio_path: Path to audio file (WAV format recommended)
+        
+    Returns:
+        Transcribed text or None if error occurs
+    """
+    try:
+        # Use the pipeline which handles all preprocessing automatically
+        result = pipe(
+            audio_path,
+            chunk_length_s=30,  # For longer audio files
+            stride_length_s=5,
+            batch_size=8
+        )
+        return result["text"]
+        
+    except Exception as e:
+        print(f"Transcription error: {str(e)}")
+        raise
