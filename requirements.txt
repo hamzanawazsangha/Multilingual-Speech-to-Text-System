@@ -1,5 +1,5 @@
 streamlit==1.32.0
-torch==2.2.1
+torch==2.2.1+cpu
 transformers==4.39.0
 audio-recorder-streamlit==0.0.8
-accelerate==0.27.0
+soundfile==0.12.1
