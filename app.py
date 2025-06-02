@@ -5,6 +5,7 @@ import streamlit as st
 from audio_recorder_streamlit import audio_recorder
 from transformers import pipeline
 import gc
+from pydub import AudioSegment
 
 # Set page config
 st.set_page_config(
@@ -14,59 +15,43 @@ st.set_page_config(
     initial_sidebar_state="auto"
 )
 
-# Simplified CSS for better compatibility
+# Simplified CSS
 def load_css():
     st.markdown("""
     <style>
-        .stApp {
-            background-color: #f0f2f6;
-        }
-        .title {
-            font-size: 1.8em;
-            color: #2c3e50;
-            text-align: center;
-        }
-        .card {
-            background-color: white;
-            border-radius: 8px;
-            padding: 1em;
-            margin: 1em 0;
-        }
-        .stButton>button {
-            background-color: #4a6fa5;
-            color: white;
-        }
-        .tab-content {
-            padding: 1em 0;
-        }
+        .stApp { background-color: #f0f2f6; }
+        .title { font-size: 1.8em; color: #2c3e50; text-align: center; }
+        .card { background-color: white; border-radius: 8px; padding: 1em; margin: 1em 0; }
+        .stButton>button { background-color: #4a6fa5; color: white; }
+        .tab-content { padding: 1em 0; }
     </style>
     """, unsafe_allow_html=True)
 
 @st.cache_resource(show_spinner=False)
 def load_model(model_name="openai/whisper-tiny"):
-    """Load a CPU-optimized model"""
     try:
-        model = pipeline(
+        return pipeline(
             "automatic-speech-recognition",
             model=model_name,
             device="cpu",
             torch_dtype=torch.float32
         )
-        return model
     except Exception as e:
         st.error(f"Model loading failed: {str(e)}")
         return None
 
-def save_audio_file(audio_bytes, file_extension):
-    """Save audio bytes to a file"""
-    timestamp = int(time.time())
-    file_name = f"audio_{timestamp}.{file_extension}"
-    with open(file_name, "wb") as f:
-        f.write(audio_bytes)
-    return file_name
+def convert_to_wav(audio_file_path):
+    """Convert any audio file to WAV format using pydub"""
+    try:
+        audio = AudioSegment.from_file(audio_file_path)
+        wav_path = audio_file_path.split('.')[0] + '.wav'
+        audio.export(wav_path, format="wav")
+        return wav_path
+    except Exception as e:
+        st.error(f"Audio conversion failed: {str(e)}")
+        return None
 
 def transcribe_audio(model, audio_file_path, language):
-    """Transcribe audio with CPU optimizations"""
     try:
         generate_kwargs = {
             "task": "transcribe",
@@ -107,9 +92,7 @@ def main():
             index=0
         )
 
-    # Create tabs for different input methods
     tab1, tab2 = st.tabs(["Record Audio", "Upload Audio File"])
-
     audio_file_path = None
     
     with tab1:
@@ -129,16 +112,24 @@ def main():
         st.subheader("Upload Audio File")
         uploaded_file = st.file_uploader(
             "Choose an audio file",
-            type=["wav", "mp3", "ogg"],
+            type=["wav", "mp3"],
             label_visibility="collapsed"
         )
         
         if uploaded_file:
             file_extension = uploaded_file.name.split(".")[-1]
-            st.audio(uploaded_file, format=f"audio/{file_extension}")
-            audio_file_path = save_audio_file(uploaded_file.read(), file_extension)
+            temp_path = save_audio_file(uploaded_file.read(), file_extension)
+            
+            if file_extension != "wav":
+                st.info("Converting audio to WAV format...")
+                audio_file_path = convert_to_wav(temp_path)
+                os.remove(temp_path)  # Remove original file
+            else:
+                audio_file_path = temp_path
+            
+            if audio_file_path:
+                st.audio(audio_file_path, format="audio/wav")
 
-    # Transcribe button (appears when audio is available)
     if audio_file_path and st.button("Transcribe Audio"):
         model = load_model(f"openai/whisper-{model_size}")
         
@@ -146,8 +137,6 @@ def main():
             transcription = transcribe_audio(model, audio_file_path, language)
             if transcription:
                 st.text_area("Transcription", transcription, height=150)
-                
-                # Add download button
                 st.download_button(
                     label="Download Transcription",
                     data=transcription,
@@ -155,10 +144,16 @@ def main():
                     mime="text/plain"
                 )
         
-        # Clean up
         if os.path.exists(audio_file_path):
             os.remove(audio_file_path)
         gc.collect()
+
+def save_audio_file(audio_bytes, file_extension):
+    timestamp = int(time.time())
+    file_name = f"audio_{timestamp}.{file_extension}"
+    with open(file_name, "wb") as f:
+        f.write(audio_bytes)
+    return file_name
 
 if __name__ == "__main__":
     main()
