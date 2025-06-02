@@ -36,6 +36,9 @@ def load_css():
             background-color: #4a6fa5;
             color: white;
         }
+        .tab-content {
+            padding: 1em 0;
+        }
     </style>
     """, unsafe_allow_html=True)
 
@@ -43,7 +46,6 @@ def load_css():
 def load_model(model_name="openai/whisper-tiny"):
     """Load a CPU-optimized model"""
     try:
-        # Force CPU usage with simpler configuration
         model = pipeline(
             "automatic-speech-recognition",
             model=model_name,
@@ -75,8 +77,8 @@ def transcribe_audio(model, audio_file_path, language):
             result = model(
                 audio_file_path,
                 generate_kwargs=generate_kwargs,
-                chunk_length_s=15,  # Smaller chunks for CPU
-                batch_size=2  # Smaller batch for CPU
+                chunk_length_s=15,
+                batch_size=2
             )
         
         gc.collect()
@@ -105,26 +107,58 @@ def main():
             index=0
         )
 
-    audio_bytes = audio_recorder(
-        pause_threshold=5.0,
-        sample_rate=16_000,
-        text="Click to record",
-        neutral_color="#6aa36f"
-    )
+    # Create tabs for different input methods
+    tab1, tab2 = st.tabs(["Record Audio", "Upload Audio File"])
 
-    if audio_bytes:
-        st.audio(audio_bytes, format="audio/wav")
-        if st.button("Transcribe"):
-            audio_file = save_audio_file(audio_bytes, "wav")
-            model = load_model(f"openai/whisper-{model_size}")
-            
-            if model:
-                transcription = transcribe_audio(model, audio_file, language)
-                if transcription:
-                    st.text_area("Transcription", transcription, height=150)
+    audio_file_path = None
+    
+    with tab1:
+        st.subheader("Record Your Voice")
+        audio_bytes = audio_recorder(
+            pause_threshold=10.0,
+            sample_rate=16_000,
+            text="Click to record (max 10s)",
+            neutral_color="#6aa36f"
+        )
+
+        if audio_bytes:
+            st.audio(audio_bytes, format="audio/wav")
+            audio_file_path = save_audio_file(audio_bytes, "wav")
+
+    with tab2:
+        st.subheader("Upload Audio File")
+        uploaded_file = st.file_uploader(
+            "Choose an audio file",
+            type=["wav", "mp3", "ogg"],
+            label_visibility="collapsed"
+        )
+        
+        if uploaded_file:
+            file_extension = uploaded_file.name.split(".")[-1]
+            st.audio(uploaded_file, format=f"audio/{file_extension}")
+            audio_file_path = save_audio_file(uploaded_file.read(), file_extension)
+
+    # Transcribe button (appears when audio is available)
+    if audio_file_path and st.button("Transcribe Audio"):
+        model = load_model(f"openai/whisper-{model_size}")
+        
+        if model:
+            transcription = transcribe_audio(model, audio_file_path, language)
+            if transcription:
+                st.text_area("Transcription", transcription, height=150)
                 
-                if os.path.exists(audio_file):
-                    os.remove(audio_file)
+                # Add download button
+                st.download_button(
+                    label="Download Transcription",
+                    data=transcription,
+                    file_name="transcription.txt",
+                    mime="text/plain"
+                )
+        
+        # Clean up
+        if os.path.exists(audio_file_path):
+            os.remove(audio_file_path)
+        gc.collect()
 
 if __name__ == "__main__":
     main()
