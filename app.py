@@ -4,51 +4,53 @@ import uuid
 from pydub import AudioSegment
 from utils import transcribe
 
+# Workaround for Streamlit/PyTorch compatibility
+os.environ['STREAMLIT_PYTORCH_PATH_WORKAROUND'] = '1'
+
 # Set Streamlit page configuration
-st.set_page_config(page_title="🗣️ Multilingual STT", layout="centered")
+st.set_page_config(
+    page_title="🗣️ Multilingual STT",
+    layout="centered",
+    initial_sidebar_state="expanded"
+)
+
 st.title("🗣️ Multilingual Speech-to-Text System")
 
-st.markdown("""
-Upload an audio file (MP3/WAV) and get transcription using **Whisper**.
-- For best results, use clear audio with minimal background noise
-- Ideal audio length is under 30 seconds for quick processing
-- Supports multiple languages automatically
-""")
+# Language selection
+language = st.selectbox(
+    "Select Language (or leave as 'auto' for detection)",
+    ["auto", "en", "es", "fr", "de", "ja", "zh", "hi", "ar"],
+    index=0
+)
 
-# File uploader
-uploaded_file = st.file_uploader("Upload Audio", type=["wav", "mp3", "ogg"])
+uploaded_file = st.file_uploader(
+    "Upload Audio (MP3/WAV/OGG)",
+    type=["wav", "mp3", "ogg"],
+    accept_multiple_files=False
+)
 
 if uploaded_file:
-    # Create a unique filename
     file_id = str(uuid.uuid4())
-    audio_dir = "audio_files"
+    audio_dir = "temp_audio"
     os.makedirs(audio_dir, exist_ok=True)
     audio_path = os.path.join(audio_dir, f"{file_id}.wav")
 
     try:
-        # Convert to WAV if needed and ensure mono channel
-        if uploaded_file.name.endswith(".mp3"):
-            audio = AudioSegment.from_file(uploaded_file, format="mp3")
-        else:
-            audio = AudioSegment.from_file(uploaded_file)
-        
-        # Convert to mono and set frame rate
+        # Audio processing with error handling
+        audio = AudioSegment.from_file(uploaded_file)
         audio = audio.set_channels(1).set_frame_rate(16000)
         audio.export(audio_path, format="wav")
 
-        # Display audio player
         st.audio(audio_path, format='audio/wav')
         
-        with st.spinner("Transcribing audio... This may take a moment..."):
-            # Transcribe audio
-            text = transcribe(audio_path)
-            st.success("Transcription Complete!")
-            st.text_area("Transcription:", value=text, height=150)
+        with st.spinner("Transcribing... This may take a few moments..."):
+            text = transcribe(audio_path, language=language if language != "auto" else None)
             
+        st.success("Transcription Complete!")
+        st.text_area("Result", value=text, height=150)
+        
     except Exception as e:
-        st.error(f"An error occurred: {str(e)}")
-        st.info("Please try a different audio file or check the file format.")
+        st.error(f"Processing failed: {str(e)}")
     finally:
-        # Clean up audio file
         if os.path.exists(audio_path):
             os.remove(audio_path)
